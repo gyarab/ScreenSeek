@@ -13,7 +13,7 @@ using System.Windows.Forms;
 
 namespace HideAndSeek
 {
-    class Tile : Entity
+    public class Tile : Entity
     {
         int spriteId;
         public List<Entity> entities = new List<Entity>();

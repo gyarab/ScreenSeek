@@ -9,7 +9,7 @@ using System.Windows.Forms;
 namespace HideAndSeek
 {
     
-    abstract class Entity
+    public abstract class Entity
     {
         public string name;
         public int posY, posX;

@@ -14,13 +14,13 @@ namespace HideAndSeek
 {
     public partial class Form1 : Form
     {
-        public const int TILE_SIZE = 32*3*2;
+        public const int TILE_SIZE = 32 * 3 * 2;
+        public Player[] players = new Player[2];
+        public Game Game;
 
-
-        const int STARTING_DISTACE = 1;
+        const int STARTING_DISTACE = 3;
         const int SPEED = 4;
         const int TIMER_INTERVAL = 10; //40
-        int tileTypes = 0;
 
         int timePassed = 0;
 
@@ -28,70 +28,125 @@ namespace HideAndSeek
 
         Label debugLog2 = new Label();
         Label debugLog1 = new Label();
-        Panel leftPlayer = new Panel();
-        Panel rightPlayer = new Panel();
+        Panel leftPanel = new Panel();
+        Panel rightPanel = new Panel();
         Label displayGameTime = new Label();
 
-        Panel leftBlind = new Panel();
-        Panel rightBlind = new Panel();
         Timer gameTimer = new Timer();
-        Timer secondTimer = new Timer();
+
+
+        public Label lives = new Label();
 
         private readonly Random _random = new Random();
-
-
-        //customizable 
-
-        int mapWidth = 6;
-        int mapHeight = 6;
-
-        //
-
-        int gameTime = 0;
-
-        bool leftKeyboard;
-    
-        bool wait = false;
-        Tile[,] gameMap;
-        int[,] testMap1 = new int[6, 6] {
-        { 0, 1, 0, 1, 0, 1 },
-        { 0, 1, 0, 1, 0, 1 },
-        { 0, 1, 0, 1, 0, 1 },
-        { 0, 1, 0, 1, 0, 1 },
-        { 0, 1, 0, 1, 0, 1 },
-        { 0, 1, 0, 1, 0, 1 }};
-        int[,] testMap2 = new int[6, 6] {
-        { 1, 1, 1, 1, 1, 1 },
-        { 0, 0, 0, 0, 0, 0 },
-        { 1, 1, 1, 1, 1, 1 },
-        { 0, 0, 0, 0, 0, 0 },
-        { 1, 1, 1, 1, 1, 1 },
-        { 0, 0, 0, 0, 0, 0 }};
-        Player[] players = new Player[2];
 
         public Form1()
         {
             InitializeComponent();
 
-            
         }
 
         private void Form1_Load(object sender, EventArgs e) {
+            
+            
 
-           
+            gameTimer.Interval = TIMER_INTERVAL;
+            gameTimer.Tick += new EventHandler(Animations);
 
-            InitGame(mapWidth, mapHeight, true);
+            
+
+
+
+        }
+
+        private void Init()
+        {
+            this.Controls.Clear();
+
+            players[0] = new Player(true, true, this);
+            players[1] = new Player(false, false, this);
+
+            CreateGame();
+        }
+
+        private void CreateGame()
+        {
+            
+            // CREATE PLAYERS
+            {
+                int x, y;
+                if (STARTING_DISTACE < GameSettings.mapWidth - STARTING_DISTACE) // Try to place players far from each other if possible
+                {
+                    x = _random.Next(STARTING_DISTACE, GameSettings.mapWidth - STARTING_DISTACE);
+                    y = _random.Next(STARTING_DISTACE, GameSettings.mapHeigth - STARTING_DISTACE);
+                }
+                else
+                {
+                    x = _random.Next(0, GameSettings.mapWidth);
+                    y = _random.Next(0, GameSettings.mapHeigth);
+                }
+                
+                Player player1 = players[0];
+                Player player2 = players[1];
+                player1.InitPlayer(!player1.hider, 0, 0);
+                player2.InitPlayer(!player2.hider, x, y);
+            }
+
+            // CREATE MAP
+            Game = new Game(GameSettings.mapWidth, GameSettings.mapHeigth, GameSettings.tileTypes);
+
+          
+
+            // DRAW MAP AND UI
+            this.Controls.Clear();
+            LoadGraphics();
+
+            
+            // DRAW PLAYER      
+
+            PictureBox p1 = createPictureBox(players[0], 1, 1);
+            p1.Tag = "player1";
+            p1.BringToFront();
+            ((Panel)getComponentOnSide(true, "mapScreen")).Controls.Add(p1);
+
+
+
+            PictureBox p2 = createPictureBox(players[1], 1, 1);
+            p2.Tag = "player2";
+            p2.BringToFront();
+            ((Panel)getComponentOnSide(false, "mapScreen")).Controls.Add(p2);
+
+            // DRAW TILES AROUND THE PLAYER   
+            foreach (Player player in players)
+            {
+                Point mapPoint;
+                for (int y = 0; y < 3; y++) // draw 3x3 tiles around the player
+                {
+                    for (int x = 0; x < 3; x++)
+                    {
+                        mapPoint = OutOfBounds(player.posX + x - 1, player.posY + y - 1); // -1 because player is in [1;1]
+                        drawTile(player.onLeft, x, y, Game.gameMap[mapPoint.Y, mapPoint.X]);
+                    }
+
+                }
+
+                drawBiomsAround(player);
+
+            }
+
+            // START TIMERS
+            gameTimer.Start();
+            foreach (Player player in players)
+            {
+                player.timer.Start();
+            }
+
+            this.Focus(); // Defocus from any previous control
+            this.KeyPreview = true;  // Activate functions like KeyPressed
+
         }
 
         private void LoadGraphics()
         {
-            /*
-            debugLog1.Text = "dd";
-            debugLog1.Location = new Point(0, 0);
-            debugLog1.Height = 500;
-            debugLog1.Width = 400;
-            debugLog1.Visible = true;
-            this.Controls.Add(debugLog1);*/
 
             displayGameTime.Location = new Point(this.Size.Width / 2 - 60, 0);
             displayGameTime.Font = new Font("Arial", 30);
@@ -99,35 +154,42 @@ namespace HideAndSeek
             displayGameTime.Anchor = AnchorStyles.Top;
             this.Controls.Add(displayGameTime);
 
-            leftPlayer.Location = new Point(0, 0);
-            leftPlayer.Width = this.Size.Width / 2;
-            leftPlayer.Height = this.Size.Height;
-            leftPlayer.Anchor = AnchorStyles.Left;
-            this.Controls.Add(leftPlayer);
+            leftPanel.Location = new Point(0, 0);
+            leftPanel.Width = this.Size.Width / 2;
+            leftPanel.Height = this.Size.Height;
+            leftPanel.Anchor = AnchorStyles.Left;
+            this.Controls.Add(leftPanel);
 
-            rightPlayer.Location = new Point(this.Size.Width / 2, 0);
-            rightPlayer.Width = this.Size.Width / 2;
-            rightPlayer.Height = this.Size.Height;
-            rightPlayer.Anchor = AnchorStyles.Right;
-            this.Controls.Add(rightPlayer);
+            rightPanel.Location = new Point(this.Size.Width / 2, 0);
+            rightPanel.Width = this.Size.Width / 2;
+            rightPanel.Height = this.Size.Height;
+            rightPanel.Anchor = AnchorStyles.Right;
+            this.Controls.Add(rightPanel);
 
-            
+           
+
+            leftPanel.Controls.Clear();
+            rightPanel.Controls.Clear();
 
             foreach (Player player in players)
             {
-                Panel side = rightPlayer;
+                Panel side;
 
-                if (player.getOnLeft())
+                if (player.onLeft)
                 {
-                    side = leftPlayer;
+                    side = leftPanel;
+                }
+                else
+                {
+                    side = rightPanel;
                 }
 
-                Panel screen = new Panel();
-                screen.Location = new Point(50, 50);
-                screen.Width = TILE_SIZE * 3;
-                screen.Height = TILE_SIZE * 3;
-                screen.Tag = "screen";
-                side.Controls.Add(screen);
+                Panel mapScreen = new Panel();
+                mapScreen.Location = new Point(50, 50);
+                mapScreen.Width = TILE_SIZE * 3;
+                mapScreen.Height = TILE_SIZE * 3;
+                mapScreen.Tag = "mapScreen";
+                side.Controls.Add(mapScreen);
 
                 ProgressBar energy = new ProgressBar();
                 energy.Location = new Point(50, TILE_SIZE * 3 + 50 + 20);
@@ -135,144 +197,31 @@ namespace HideAndSeek
                 energy.Height = 40;
                 energy.Tag = "energy";
                 side.Controls.Add(energy);
-            }           
 
+                if (player.hider)
+                {
+                    
+                }
+                else
+                {                 
+                    lives.Location = new Point(50, 2);
+                    lives.Text = "Lives: " + GameSettings.seekerLives;
+                    lives.Font = new Font("Arial", 20);
+                    lives.Anchor = AnchorStyles.Top;
+                    lives.AutoSize = true;
+                    side.Controls.Add(lives);
+                }
+            }           
+            /*
             debugLog2.Text = "";
             debugLog2.Location = new Point(650, 500);
             debugLog2.Height = 500;
             debugLog2.Width = 450;
-            debugLog2.BorderStyle = BorderStyle.Fixed3D;
-            debugLog2.Font = new Font("Calibri", 10);
-            debugLog2.Padding = new Padding(6);
-            debugLog2.Visible = false;
-            this.Controls.Add(debugLog2);
-
-            
-            leftBlind.Location = new Point(50, 50);
-            leftBlind.Width = TILE_SIZE * 3;
-            leftBlind.Height = TILE_SIZE * 3;
-            leftBlind.BringToFront();
-            leftBlind.BackColor = Color.Black;
-            leftBlind.Visible = false;
-            leftBlind.Anchor = AnchorStyles.Left;
-            this.Controls.Add(leftBlind);
-
-            rightBlind.Location = new Point(this.Size.Width / 2 + 50, 50);
-            rightBlind.Width = TILE_SIZE * 3;
-            rightBlind.Height = TILE_SIZE * 3;
-            rightBlind.BringToFront();
-            rightBlind.BackColor = Color.Black;
-            rightBlind.Visible = false;
-            rightBlind.Anchor = AnchorStyles.Right;
-            this.Controls.Add(rightBlind);
-
-
-            
-            /*
-            rightScreen.Location = new Point(this.Size.Width / 2 + 50, 50);
-            rightScreen.Width = TILE_SIZE * 3 + TILE_SIZE;
-            rightScreen.Height = TILE_SIZE * 3 + TILE_SIZE;
-            rightScreen.Anchor = AnchorStyles.Right;
-            this.Controls.Add(rightScreen);
-
-           */
-
-
-
+            debugLog2.Visible = true;
+            this.Controls.Add(debugLog2);*/
 
         }
-        private void InitGame(int width, int height, bool leftPlayerHider)
-        {
-           
-            //GENERATE BIOMS
-            gameMap = new Tile[width, height];
-            
-            for (int y = 0; y < width; y++)
-            {
-                for (int x = 0; x < height; x++)
-                {
-                    Image biom = null;
-                    int spriteId = _random.Next(0, tileTypes + 1 + 1);
-                    //spriteId = testMap2[y, x];
-                    switch (spriteId)
-                    {
-                        case 0:
-                            {
-                                biom = Image.FromFile(@"..\..\Images\grassTile8.png");                         
-                                break;
-                            }
-                        case 1:
-                            {
-                                biom = Image.FromFile(@"..\..\Images\grassTile6.png");                       
-                                break;
-                            }
-                    }
-                    
-                    gameMap[y, x] = new Tile(biom, x , y);
-             
-                }
-            }
-
-            //INIT PLAYERS
-            //if (players[0] == null) // if playing for the first time
-            {
-         
-                players[0] = new Player(leftPlayerHider, true, 0, 0);    
-                int x = _random.Next(STARTING_DISTACE, width - STARTING_DISTACE); //TODO expception
-                int y = _random.Next(STARTING_DISTACE, height - STARTING_DISTACE);
-                players[1] = new Player(!leftPlayerHider, false, 2, 2);
-
-
-                gameTimer.Interval = TIMER_INTERVAL;
-                gameTimer.Tick += new EventHandler(GameLoop);
-
-                secondTimer.Interval = 1000;
-                secondTimer.Tick += new EventHandler(SecondPassed);
-
-            }
-            gameTimer.Start();
-            secondTimer.Start();
-
-            this.Controls.Clear();
-            LoadGraphics();
-
-            // DRAW COINS
-
-
-            // DRAW PLAYER      
-
-            PictureBox p1 = createPictureBox(players[0], 1, 1, true);
-            p1.Tag = "player1";
-            p1.BringToFront();
-            ((Panel)getComponentOnSide(true, "screen")).Controls.Add(p1);
-
-            
-
-            PictureBox p2 = createPictureBox(players[1], 1, 1, false);
-            p2.Tag = "player2";
-            p2.BringToFront();
-
-            ((Panel)getComponentOnSide(false, "screen")).Controls.Add(p2);
-
-            // DRAW TILES AROUND THE PLAYER   
-            foreach (Player player in players)
-            {
-                Point mapPoint = new Point();
-                for (int y = 0; y < 3; y++) // draw 3x3 tiles around the player
-                {
-                    for (int x = 0; x < 3; x++)
-                    {
-                        mapPoint = OutOfBounds(player.posX + x - 1, player.posY + y - 1); // -1 because player is in [1;1]
-                        drawTile(player.getOnLeft(), x, y, gameMap[mapPoint.Y, mapPoint.X]); 
-                    }
-                    
-                }
-
-                drawBiomsAround(player);
-   
-            }
-
-        }
+       
 
         private Image resize(Image image, int targetWidth, int targetHeight)
         {
@@ -295,44 +244,27 @@ namespace HideAndSeek
    
         private void drawTile(bool left, int x, int y, Tile tile)
         {
+            Panel currentScreen = (Panel)getComponentOnSide(left, "mapScreen");
 
+            PictureBox biomPB = createPictureBox(tile, x ,y);
 
-            Panel currentScreen = (Panel)getComponentOnSide(left, "screen");
-
-            PictureBox biomPB = createPictureBox(tile, x ,y, left);
-
-            int i = 0;
-            foreach (Entity en in tile.entities)
-            {
-                if (en.GetType() == typeof(DebugText))
-                {
-                    debugLog2.Text += ((DebugText)en).label.Text + " -----  ";
-
-                    //biomPB.Controls.Add(((DebugText)en).label);
-                }
-                else
-                {
-                    //biomPB.Controls.Add(createPictureBox(en, x, y, left));
-                }
-                
-            }
-           
-            debugLog2.Text += biomPB.Name;
             currentScreen.Controls.Add(biomPB);
         }
-        private void endAnimation(bool left)
+        private void endAnimation(Player player)
         {
+            // Move player to the coordinates where he was moving
+            Point newPos = OutOfBounds(player.posX + player.movingX * -1, player.posY + player.movingY * -1); 
+            player.posX = newPos.X;
+            player.posY = newPos.Y;
+            player.distanceTraveled = 0;
+            player.movingX = 0;
+            player.movingY = 0;
 
-            Panel currentScreen = (Panel)getComponentOnSide(left, "screen");
 
-            debugLog2.Text = "";
-            debugLog1.Text = "";
-            int i = 0;
-            int j = 0;
-            
-            
+            Panel currentScreen = (Panel)getComponentOnSide(player.onLeft, "mapScreen");
+
             List<Control> toBeRemoved = new List<Control>();
-            foreach (Control item in currentScreen.Controls.OfType<PictureBox>())
+            foreach (Control item in currentScreen.Controls.OfType<PictureBox>()) // delete every tile out of the 3x3 grid
             {
                 if ((string)item.Tag != "player1" && (string)item.Tag != "player2")
                 {
@@ -366,47 +298,31 @@ namespace HideAndSeek
                             ((PictureBox)item).Top = TILE_SIZE * 2;
                         }
 
-
                         x = ((PictureBox)item).Left;
                         y = ((PictureBox)item).Top;
                     }
-
-                    debugLog1.Text += x + " " + y + "       ";
-
-                    j++;
-                    if (x < 0 || x > TILE_SIZE*2  || y < 0 || y > TILE_SIZE*2) // delete tiles out of the grid
+          
+                    if (x < 0 || x > TILE_SIZE*2  || y < 0 || y > TILE_SIZE*2) // check if the tile is out of the grid
                     {
-                        i++;
-                        debugLog2.Text += item.Left + " " + item.Top + "   " + ((currentScreen.Width - TILE_SIZE + 1).ToString()) + " " + ((currentScreen.Height - TILE_SIZE + 1).ToString()) + "\n";
                         toBeRemoved.Add(item);
                     }
                 }
 
             }
-            debugLog2.Text += i;
-            debugLog1.Text += j;
-            foreach (Control item in toBeRemoved)
-            {
 
+            foreach (Control item in toBeRemoved)   // delete the tiles
+            {
                 currentScreen.Controls.Remove(item);
                 ((PictureBox)item).Dispose();
 
             }
-            if (!left)
-            {
-                drawBiomsAround(players[1]);
 
-            }
-            else
-            {
-                drawBiomsAround(players[0]);
+            drawBiomsAround(player);  // keep the tiles in 3x3 grid and draw new tiles outside the grid so that the scene is prepared
 
-            }
-         
 
         }
 
-        private PictureBox createPictureBox(Entity entity, int x, int y, bool left)
+        private PictureBox createPictureBox(Entity entity, int x, int y)
         {
             PictureBox pb = new PictureBox();       
             pb.Image = resize(entity.sprite, entity.width, entity.width);
@@ -415,31 +331,28 @@ namespace HideAndSeek
             pb.Width = entity.width;
             pb.Top = y * TILE_SIZE + TILE_SIZE / 2 - TILE_SIZE / (2 * TILE_SIZE / entity.height);
             pb.Left = x * TILE_SIZE + TILE_SIZE / 2 - TILE_SIZE / (2 * TILE_SIZE / entity.width);
-       
 
             return pb;
-
         }
 
         public Point OutOfBounds(int x, int y)
         {
-
             if (x < 0)
             {
-                x = mapWidth + x;
+                x = GameSettings.mapWidth + x;
             }
-            else if (x > mapWidth - 1)
+            else if (x > GameSettings.mapWidth - 1)
             {
-                x = x - mapWidth;
+                x = x - GameSettings.mapWidth;
             }
 
             if (y < 0)
             {
-                y = mapHeight + y;
+                y = GameSettings.mapHeigth + y;
             }
-            else if (y > mapHeight - 1)
+            else if (y > GameSettings.mapHeigth - 1)
             {
-                y = y - mapHeight;
+                y = y - GameSettings.mapHeigth;
             }
             return new Point(x, y);
         }
@@ -447,239 +360,151 @@ namespace HideAndSeek
         void drawBiomsAround(Player player)
         {
             /*
-            draw bioms around like this (x = draw):
-            x x x x x 
-            x . . . x
-            x . . . x
-            x . . . x
-            x x x x x
+            draw bioms around like this:
+        1.  x x x x x 
+        2.  x . . . x   x = draw
+        3.  x . P . x   . = keep
+        4.  x . . . x   P = player
+        5.  x x x x x
             */
 
-            int playerX = player.posX;
-            int playerY = player.posY;
-           
-            Point mapPoint = new Point();
-       
+            Point mapPoint;
+
+            // line 1
             {
                 int y = -1;
                 for (int x = -1; x < 3 + 1; x++)
                 {
                     
                     mapPoint = OutOfBounds(player.posX + x - 1, player.posY + y - 1);
-                    drawTile(player.getOnLeft(), x, y, gameMap[mapPoint.Y, mapPoint.X]); 
+                    drawTile(player.onLeft, x, y, Game.gameMap[mapPoint.Y, mapPoint.X]); 
                 }
             }
-      
-            for (int y = 0; y < 3; y++)
+
+            // line 2-4
+            for (int y = 0; y < 3; y++) 
             {
                 for (int x = -1; x < 3 + 1; x+= 3 + 1)
                 {
                 
                     mapPoint = OutOfBounds(player.posX + x - 1, player.posY + y - 1);
-                    drawTile(player.getOnLeft(), x, y, gameMap[mapPoint.Y, mapPoint.X]); 
+                    drawTile(player.onLeft, x, y, Game.gameMap[mapPoint.Y, mapPoint.X]); 
                 }
             }
-        
+            // line 5
             {
                 int y = 3;
                 for (int x = -1; x < 3 + 1; x++)
                 {
               
                     mapPoint = OutOfBounds(player.posX + x - 1, player.posY + y - 1);
-                    drawTile(player.getOnLeft(), x, y, gameMap[mapPoint.Y, mapPoint.X]);
+                    drawTile(player.onLeft, x, y, Game.gameMap[mapPoint.Y, mapPoint.X]);
                 }
             }
-
-
-         
-
-        }
-        private void spawnItem(bool left, int x, int y)
-        {
 
         }
         private void KeyIsDown(object sender, KeyEventArgs e)
         {
-       
-            leftKeyboard = false;
-            if(e.KeyCode == Keys.Left)
+            if (Game.running)
             {
-                Move(-1,0 , leftKeyboard);
+                Player player = players[1];
+                if(e.KeyCode == Keys.Left)
+                {
+                    player.StartMoving(-1,0);
           
-            }
-            else if(e.KeyCode == Keys.Right)
-            {
-                Move(1, 0, leftKeyboard);
+                }
+                else if(e.KeyCode == Keys.Right)
+                {
+                    player.StartMoving(1, 0);
            
-            }
-            else if (e.KeyCode == Keys.Up)
-            {
-                Move(0, -1, leftKeyboard);
+                }
+                else if (e.KeyCode == Keys.Up)
+                {
+                    player.StartMoving(0, -1);
          
-            }
-            else if (e.KeyCode == Keys.Down)
-            {
-                Move(0, 1, leftKeyboard);
+                }
+                else if (e.KeyCode == Keys.Down)
+                {
+                    player.StartMoving(0, 1);
                 
+                }
+                else if (e.KeyCode == Keys.P)
+                {
+
+                    player.UsePrimarySkill();
+                }
+                else if (e.KeyCode == Keys.O)
+                {
+                    player.UseSecondarySkill();
+                }
+                else
+                {
+                    player = players[0];
+
+                    if (e.KeyCode == Keys.A)
+                    {
+                        player.StartMoving(-1, 0);
+
+
+                    }
+                    else if (e.KeyCode == Keys.D)
+                    {
+                        player.StartMoving(1, 0);
+
+                    }
+                    else if (e.KeyCode == Keys.W)
+                    {
+                        player.StartMoving(0, -1);
+
+                    }
+                    else if (e.KeyCode == Keys.S)
+                    {
+                        player.StartMoving(0, 1);
+
+                    }
+                    else if (e.KeyCode == Keys.F)
+                    {
+                        player.UsePrimarySkill();
+                    }
+                    else if (e.KeyCode == Keys.E)
+                    {
+                        player.UseSecondarySkill();
+                    }
+
+
+                }
             }
-            else if (e.KeyCode == Keys.P)
-            {
-    
-                PrimarySkill(leftKeyboard);
-            }
-            else if (e.KeyCode == Keys.O)
-            {
-                SecondarySkill(leftKeyboard);
-            }
-            else
-            {
-                leftKeyboard = true;
 
-                if (e.KeyCode == Keys.A)
-                {
-                    Move(-1, 0, leftKeyboard);
+        }
 
-
-                }
-                else if (e.KeyCode == Keys.D)
-                {
-                    Move(1, 0, leftKeyboard);
-
-                }
-                else if (e.KeyCode == Keys.W)
-                {
-                    Move(0, -1, leftKeyboard);
-
-                }
-                else if (e.KeyCode == Keys.S)
-                {
-                    Move(0, 1, leftKeyboard);
-
-                }
-                else if (e.KeyCode == Keys.F)
-                {
-                    PrimarySkill(leftKeyboard);
-                }
-                else if (e.KeyCode == Keys.E)
-                {
-                    SecondarySkill(leftKeyboard);
-                }
-
-
-            }
-
+        public void SetEnergy(Player player)
+        {
+            ProgressBar energyProgressBar = (ProgressBar)getComponentOnSide(player.onLeft, "energy");
            
-        }
-
-        private void Move(int deltaX, int deltaY, bool leftPlayer)
-        {
-
-            Player player = players[1];     
-            if (leftPlayer)
-            {
-                player = players[0];
-            }
-
-            if (player.movingX != 0 || player.movingY != 0)
-            {
-                return;
-            }       
-
-            if(player.energy < 100)
-            {
-                return;
-            }
-            SetEnergy(player, 0);    
-            secondTimer.Stop();
-            secondTimer.Start();
-
-            deltaX *= -1;
-            deltaY *= -1;
-
-            player.movingX = deltaX;
-            player.movingY = deltaY;
+            energyProgressBar.Value = Math.Min(player.energy, 100); // if players energy > 100, set value to 100
 
         }
 
-        private void SetEnergy(Player player, int ammout)
+
+        public void EndGame(bool leftWon, string reason = "")
         {
-            ProgressBar energyProgressBar = (ProgressBar)getComponentOnSide(player.getOnLeft(), "energy");
-            player.energy = ammout;
-            energyProgressBar.Value = player.energy;
-            debugLog1.Text += "     "+ player.energy;
-        }
-
-        private void PrimarySkill(bool leftPlayer)
-        {
- 
-            int id;
-            if (leftPlayer)
-            {
-                id = 0;
-            }
-            else
-            {
-                id = 1;
-            }
-
-            if (players[id].getHider())
-            {
-
-            }
-            else
-            {
+            Game.running = false;
             
-                if (players[(id + 1) % 2].posX == players[id].posX && players[(id + 1) % 2].posY == players[id].posY)
-                {
-            
-                    EndGame(leftPlayer, "Seeker found the hider");
-                    
-                }
-            }
-        }
-
-        private void SecondarySkill(bool leftPlayer)
-        {
-            int id;
-            if (leftPlayer)
-            {
-                id = 0;
-            }
-            else
-            {
-                id = 1;
-            }
-
-            if (players[id].getHider())
-            {
-
-            }
-            else
-            {
-              
-            }
-
-        }
-
-        private void EndGame(bool leftWon, string reason = "")
-        {
             gameTimer.Stop();
-            secondTimer.Stop();
-            gameTime = 0;
+            foreach (Player player in players)
+            {
+                player.timer.Start();
+            }
             this.Controls.Clear();
           
-
-            Label winner = new Label();       
-            winner.Location = new Point(50, 200);
-            winner.Height = 500;
-            winner.Width = 450;
-            winner.BorderStyle = BorderStyle.Fixed3D;
+            
+            Label winner = new Label();
+            winner.Location = new Point(this.Size.Width / 2, this.Size.Height / 4);
+            winner.AutoSize = true;
             winner.Font = new Font("Calibri", 30);
-            winner.Padding = new Padding(6);
-          
-          
+
             if (leftWon)
-            {           
+            {
                 winner.Text = "Left player won\n" + reason;
                 players[0].gamesWon += 1;
             }
@@ -689,49 +514,75 @@ namespace HideAndSeek
                 players[1].gamesWon += 1;
             }
 
+            Label leftScore = new Label();
+            leftScore.AutoSize = true;
+            leftScore.Anchor = AnchorStyles.Left;
+            leftScore.Font = new Font("Calibri", 30);
+            leftScore.Text = "Score: " + players[0].gamesWon;
+
+            Label rightScore = new Label();
+            rightScore.AutoSize = true;
+            rightScore.Anchor = AnchorStyles.Right;
+            rightScore.Left = this.Size.Width - 200;
+            rightScore.Font = new Font("Calibri", 30);
+            rightScore.Text = "Score: " + players[1].gamesWon;
+
+            Button nextRndBtn = new Button();
+            nextRndBtn.Location = new Point(this.Width/2, this.Height/2);
+            nextRndBtn.Text = "Next round";
+            nextRndBtn.AutoSize = true;
+            nextRndBtn.Font = new Font("Calibri", 18);
+            nextRndBtn.Click += new EventHandler(NextRound);
+
             Button restartBtn = new Button();
-            restartBtn.Location = new Point(this.Width/2, this.Height/2);
+            restartBtn.Location = new Point(this.Width / 2, (int)(this.Height / 1.7f));
             restartBtn.Text = "Restart";
             restartBtn.AutoSize = true;
-            restartBtn.BackColor = Color.LightBlue;
-            restartBtn.Padding = new Padding(6);
             restartBtn.Font = new Font("Calibri", 18);
             restartBtn.Click += new EventHandler(RestartGame);
 
             Button exitBtn = new Button();
-            exitBtn.Location = new Point(this.Width / 2, (int)(this.Height / 1.7f));
+            exitBtn.Location = new Point(this.Width / 2, (int)(this.Height / 1.5f));
             exitBtn.Text = "Exit";
             exitBtn.AutoSize = true;
-            exitBtn.BackColor = Color.LightBlue;
-            exitBtn.Padding = new Padding(6);
             exitBtn.Font = new Font("Calibri", 18);
+            exitBtn.Click += new EventHandler(ExitGame);
+
 
             this.Controls.Add(winner);
+            this.Controls.Add(leftScore);
+            this.Controls.Add(rightScore);
             this.Controls.Add(exitBtn);
+            this.Controls.Add(nextRndBtn);
             this.Controls.Add(restartBtn);
         }
-        private void CloseWindow(object sender, EventArgs e)
-        {
 
+
+        private void ExitGame(object sender, EventArgs e)
+        {
+            Application.Exit();
         }
         private void RestartGame(object sender, EventArgs e)
         {
-            players[0].hider = !players[0].hider;
-            players[1].hider = !players[1].hider;
-            InitGame(mapWidth, mapHeight, players[1].hider);
+            Application.Restart();
+         
         }
-        private void GameLoop(object sender, EventArgs e)
+        private void NextRound(object sender, EventArgs e)
+        {
+                this.Controls.Clear();
+                CreateGame();
+        }
+        private void Animations(object sender, EventArgs e) // runs every few milliseconds
         {
             foreach (Player player in players)
             {
-                bool left = player.getOnLeft();
-                
-                if(player.movingX != 0 || player.movingY != 0) // MOVING ANIMATION
+   
+                if(player.movingX != 0 || player.movingY != 0) // if player is moving, start moving animation:
                 {
 
-                    Panel currentScreen = (Panel)getComponentOnSide(left, "screen");
+                    Panel currentScreen = (Panel)getComponentOnSide(player.onLeft, "mapScreen");
 
-                    foreach (Control item in currentScreen.Controls.OfType<PictureBox>())
+                    foreach (Control item in currentScreen.Controls.OfType<PictureBox>())  // move all tiles oposite direction the player is moving by little
                     {
                         if((string)item.Tag != "player1" && (string)item.Tag != "player2")
                         {
@@ -744,19 +595,9 @@ namespace HideAndSeek
 
                     player.distanceTraveled++;
     
-                    if (player.distanceTraveled * SPEED >= TILE_SIZE) // end anim
-                    {
-                        Point newPos = OutOfBounds(player.posX + player.movingX * -1, player.posY + player.movingY * -1);
-                        player.posX = newPos.X;
-                        player.posY = newPos.Y;
-                        player.distanceTraveled = 0;
-                        player.movingX = 0;
-                        player.movingY = 0;
-
-
-                        endAnimation(player.getOnLeft());
-
-
+                    if (player.distanceTraveled * SPEED >= TILE_SIZE) // end animation
+                    {                     
+                        endAnimation(player);
                     }
 
                 }              
@@ -765,11 +606,11 @@ namespace HideAndSeek
         }
         private void SecondPassed(object sender, EventArgs e)
         {
-            gameTime++;
-            displayGameTime.Text = gameTime.ToString();
-            if (gameTime > 100)
+            Game.gameTime++;
+            displayGameTime.Text = Game.gameTime.ToString();
+            if (Game.gameTime > GameSettings.gameEndTime)
             {
-                if(players[0].getOnLeft() && players[0].getHider())
+                if(players[0].onLeft && players[0].getHider())
                 {
                     EndGame(true, "Seeker havent find hider");
                 }
@@ -779,14 +620,7 @@ namespace HideAndSeek
                 }
                 
             }
-            foreach (Player player in players)
-            {
-                if (player.energy < 100)
-                { 
-                    SetEnergy(player, player.energy + player.energyRecovery);
-                }
-  
-            }
+          
         }
         private Control getComponentOnSide(bool left, string name)
         {
@@ -794,7 +628,7 @@ namespace HideAndSeek
 
             if (left)
             {
-                foreach (Control item in leftPlayer.Controls)
+                foreach (Control item in leftPanel.Controls)
                 {
                     if ((string)item.Tag == name)
                     {
@@ -807,8 +641,7 @@ namespace HideAndSeek
             }
             else
             {
-               
-                foreach (Control item in rightPlayer.Controls)
+                foreach (Control item in rightPanel.Controls)
                 {
                     if ((string)item.Tag == name)
                     {
@@ -820,6 +653,80 @@ namespace HideAndSeek
             }
             return component;
         }
-  
+
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            Init();
+        }
+      
+        private void numericUpDown1_ValueChanged(object sender, EventArgs e)
+        {
+            int value = (int)((NumericUpDown)(sender)).Value;
+            if (value < 2)
+            {
+                value = 2;
+            }
+            else if (value > 100)
+            {
+                value = 100;
+            }
+            GameSettings.mapWidth = value;
+        }
+
+        private void numericUpDown2_ValueChanged(object sender, EventArgs e)
+        {
+            int value = (int)((NumericUpDown)(sender)).Value;
+            if (value < 2)
+            {
+                value = 2;
+            }
+            else if (value > 100)
+            {
+                value = 100;
+            }
+            GameSettings.mapHeigth = value;
+        }
+
+        private void numericUpDown6_ValueChanged(object sender, EventArgs e)
+        {
+            int value = (int)((NumericUpDown)(sender)).Value;
+            if (value < 2)
+            {
+                value = 2;
+            }
+            else if (value > 100)
+            {
+                value = 100;
+            }
+            GameSettings.gameEndTime = value;
+        }
+
+        private void numericUpDown4_ValueChanged(object sender, EventArgs e)
+        {
+            int value = (int)((NumericUpDown)(sender)).Value;
+            if (value < 0)
+            {
+                value = 0;
+            }else if (value > 100)
+            {
+                value = 100;
+            }
+            GameSettings.hiderRecovery = value;
+        }
+        
+        private void numericUpDown5_ValueChanged(object sender, EventArgs e)
+        {
+            int value = (int)((NumericUpDown)(sender)).Value;
+            if (value < 0)
+            {
+                value = 0;
+            }
+            else if (value > 100)
+            {
+                value = 100;
+            }
+            GameSettings.seekerRecovery = value;
+        }
     }
 }
